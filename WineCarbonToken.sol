@@ -6,8 +6,12 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard {
-    
+contract WineCarbonProtocol is
+    ERC20,
+    ERC20Burnable,
+    AccessControl,
+    ReentrancyGuard
+{
     // --- ROLES & CONFIG ---
     bytes32 public constant PRODUCER_ROLE = keccak256("PRODUCER_ROLE");
     bytes32 public constant JUDGE_ROLE = keccak256("JUDGE_ROLE");
@@ -17,17 +21,29 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
     uint256 public constant PRODUCER_BOND = 0.01 ether;
     uint256 public constant CHALLENGE_BOND = 0.02 ether;
     uint256 public constant CHALLENGE_WINDOW = 2 minutes; //72h
-    
-    uint256 public constant VOTE_QUORUM = 10; 
+
+    uint256 public constant VOTE_QUORUM = 10;
     uint256 public constant BASE_PRICE = 0.0001 ether;
+
+    uint256 public constant CO2_PER_ENERGY = 500; // e.g., 500g CO2 per kWh
+    uint256 public constant CO2_PER_WATER = 10; // e.g., 10g CO2 per Liter
+    uint256 public constant CO2_PER_CHEMICAL = 2000; // e.g., 2000g CO2 per kg of synthetic pesticide
+    uint256 public constant CO2_PER_LOGISTICS = 100; // e.g., 100g CO2 per kg-km (weight * distance)
 
     uint256 public globalCo2Threshold;
 
-    enum Status { Pending, Verified, Rejected, Challenged, Finalized }
+    enum Status {
+        Pending,
+        Verified,
+        Rejected,
+        Challenged,
+        Finalized
+    }
 
     struct Report {
         address producer;
         string ipfsHash;
+        ProductionMetrics metrics;
         uint256 co2Emitted;
         uint256 threshold;
         Status status;
@@ -37,7 +53,15 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
         uint256 votesAgainst;
         uint256 challengeEndTime;
         address challenger;
-        address[] voters; 
+        address[] voters;
+    }
+
+    struct ProductionMetrics {
+        uint256 energyUsed; // Energy Consumption
+        uint256 waterUsed; // Water Usage
+        uint256 chemicalUsage; // Chemical Footprint
+        uint256 logisticsScore; // Packaging & Logistics (Weight * Distance)
+        uint256 sequestration; // Carbon Sequestration (Credit)
     }
 
     struct VoteInfo {
@@ -47,14 +71,24 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
 
     mapping(uint256 => Report) public reports;
     mapping(uint256 => mapping(address => VoteInfo)) public judgeVotes;
-    mapping(address => uint256) public carbonDebt; 
+    mapping(address => uint256) public carbonDebt;
     mapping(address => uint256) public reputation;
-    
+
     uint256 public reportCount;
 
     // --- EVENTS ---
-    event ReportSubmitted(uint256 indexed id, address producer, string ipfsHash);
-    event Voted(uint256 indexed id, address judge, bool support, uint256 weight);
+    event ReportSubmitted(
+        uint256 indexed id,
+        address producer,
+        uint256 calculatedCo2,
+        string ipfsHash
+    );
+    event Voted(
+        uint256 indexed id,
+        address judge,
+        bool support,
+        uint256 weight
+    );
     event ChallengeRaised(uint256 indexed id, address challenger);
     event ReportFinalized(uint256 indexed id, Status status);
     event TokensPurchased(address buyer, uint256 amount, uint256 cost);
@@ -72,38 +106,77 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
     function joinAsProducer() external payable nonReentrant {
         require(msg.value == PRODUCER_BOND, "Incorrect Bond");
         require(!hasRole(PRODUCER_ROLE, msg.sender), "Already a producer");
-        require(!hasRole(JUDGE_ROLE, msg.sender), "Cannot be Judge and Producer"); 
+        require(
+            !hasRole(JUDGE_ROLE, msg.sender),
+            "Cannot be Judge and Producer"
+        );
         _grantRole(PRODUCER_ROLE, msg.sender);
     }
 
     function joinAsJudge() external payable nonReentrant {
         require(msg.value == JUDGE_STAKE, "Incorrect Stake");
         require(!hasRole(JUDGE_ROLE, msg.sender), "Already a judge");
-        require(!hasRole(PRODUCER_ROLE, msg.sender), "Cannot be Producer and Judge");
-        
+        require(
+            !hasRole(PRODUCER_ROLE, msg.sender),
+            "Cannot be Producer and Judge"
+        );
+
         _grantRole(JUDGE_ROLE, msg.sender);
-        reputation[msg.sender] = 20; 
+        reputation[msg.sender] = 20;
     }
 
     // --- 2. DATA INPUT ---
 
-    function setGlobalThreshold(uint256 _newThreshold) external onlyRole(GOVERNANCE_ROLE) {
+    function setGlobalThreshold(
+        uint256 _newThreshold
+    ) external onlyRole(GOVERNANCE_ROLE) {
         globalCo2Threshold = _newThreshold;
     }
 
-    function submitReport(uint256 _co2, string calldata _ipfsHash) external onlyRole(PRODUCER_ROLE) {
+    function submitReport(
+        ProductionMetrics calldata _metrics,
+        string calldata _ipfsHash
+    ) external onlyRole(PRODUCER_ROLE) {
         require(carbonDebt[msg.sender] == 0, "Must settle carbon debt");
 
-        reportCount++;
-        Report storage newReport = reports[reportCount];
+        (Report memory newReport, uint256 finalCo2) = computeAndSetCO2(
+            _metrics
+        );
+
         newReport.producer = msg.sender;
         newReport.ipfsHash = _ipfsHash;
-        newReport.co2Emitted = _co2;
         newReport.threshold = globalCo2Threshold;
         newReport.status = Status.Pending;
         newReport.submissionTime = block.timestamp;
-        
-        emit ReportSubmitted(reportCount, msg.sender, _ipfsHash);
+
+        emit ReportSubmitted(reportCount, msg.sender, finalCo2, _ipfsHash);
+    }
+
+    function computeAndSetCO2(
+        ProductionMetrics calldata _metrics
+    ) internal returns (Report memory, uint256) {
+        uint256 grossEmissions = (_metrics.energyUsed * CO2_PER_ENERGY) +
+            (_metrics.waterUsed * CO2_PER_WATER) +
+            (_metrics.chemicalUsage * CO2_PER_CHEMICAL) +
+            (_metrics.logisticsScore * CO2_PER_LOGISTICS);
+
+        uint256 finalCo2;
+        if (_metrics.sequestration >= grossEmissions) {
+            finalCo2 = 0; // Carbon Neutral or Negative (Net Zero)
+        } else {
+            finalCo2 = grossEmissions - _metrics.sequestration;
+        }
+        reportCount++;
+        Report storage newReport = reports[reportCount];
+        ProductionMetrics memory newMetrics;
+        newMetrics.energyUsed = _metrics.energyUsed;
+        newMetrics.waterUsed = _metrics.waterUsed;
+        newMetrics.chemicalUsage = _metrics.chemicalUsage;
+        newMetrics.logisticsScore = _metrics.logisticsScore;
+        newMetrics.sequestration = _metrics.sequestration;
+        newReport.metrics = newMetrics;
+        newReport.co2Emitted = finalCo2;
+        return (newReport, finalCo2);
     }
 
     // --- 3. VOTING (THE ECO-JUDGE) ---
@@ -120,7 +193,10 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
         if (_support) r.votesFor += weight;
         else r.votesAgainst += weight;
 
-        judgeVotes[_id][msg.sender] = VoteInfo({hasVoted: true, support: _support});
+        judgeVotes[_id][msg.sender] = VoteInfo({
+            hasVoted: true,
+            support: _support
+        });
         r.voters.push(msg.sender);
 
         emit Voted(_id, msg.sender, _support, weight);
@@ -129,51 +205,65 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
     function validateVoteResult(uint256 _id) external {
         Report storage r = reports[_id];
         require(r.status == Status.Pending, "Not pending");
-        require(r.votesFor + r.votesAgainst >= VOTE_QUORUM, "Not enough votes yet");
+        require(
+            r.votesFor + r.votesAgainst >= VOTE_QUORUM,
+            "Not enough votes yet"
+        );
 
         if (r.votesFor > r.votesAgainst) {
             r.status = Status.Verified;
         } else {
             r.status = Status.Rejected;
         }
-        
-        r.challengeEndTime = block.timestamp + CHALLENGE_WINDOW; 
+
+        r.challengeEndTime = block.timestamp + CHALLENGE_WINDOW;
     }
 
     // --- 4. DISPUTE MECHANISM ---
 
     function challengeReport(uint256 _id) external payable nonReentrant {
         Report storage r = reports[_id];
-        require(r.status == Status.Verified || r.status == Status.Rejected, "Invalid status");
-        require(block.timestamp < r.challengeEndTime, "Challenge window closed");
+        require(
+            r.status == Status.Verified || r.status == Status.Rejected,
+            "Invalid status"
+        );
+        require(
+            block.timestamp < r.challengeEndTime,
+            "Challenge window closed"
+        );
         require(msg.value >= CHALLENGE_BOND, "Insufficient bond");
 
-        r.originalStatus = r.status; 
-        
+        r.originalStatus = r.status;
+
         r.status = Status.Challenged;
         r.challenger = msg.sender;
         emit ChallengeRaised(_id, msg.sender);
     }
 
-    function resolveChallenge(uint256 _id, bool upholdOriginalDecision) external onlyRole(GOVERNANCE_ROLE) nonReentrant {
+    function resolveChallenge(
+        uint256 _id,
+        bool upholdOriginalDecision
+    ) external onlyRole(GOVERNANCE_ROLE) nonReentrant {
         Report storage r = reports[_id];
         require(r.status == Status.Challenged, "Not challenged");
-        
+        bool isVerifiedCorrect;
+
         if (!upholdOriginalDecision) {
             // GOV AGREES WITH CHALLENGER (Judges were Wrong)
             payable(r.challenger).transfer(CHALLENGE_BOND);
 
-            uint256 tokenReward = (CHALLENGE_BOND * 10**decimals()) / getBuyPrice();
+            uint256 tokenReward = (CHALLENGE_BOND * 10 ** decimals()) /
+                getBuyPrice();
             _mint(r.challenger, tokenReward);
-            
-            bool isVerifiedCorrect = (r.originalStatus == Status.Rejected);
+
+            isVerifiedCorrect = (r.originalStatus == Status.Rejected);
             _slashWrongJudges(_id, isVerifiedCorrect);
         } else {
             isVerifiedCorrect = (r.originalStatus == Status.Verified);
         }
 
         r.status = Status.Finalized;
-        
+
         if (isVerifiedCorrect) {
             _processEcoLogic(r);
         } else {
@@ -187,22 +277,24 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
 
     function finalize(uint256 _id) external nonReentrant {
         Report storage r = reports[_id];
-        require(r.status == Status.Verified || r.status == Status.Rejected, "Status not finalizable");
+        require(
+            r.status == Status.Verified || r.status == Status.Rejected,
+            "Status not finalizable"
+        );
         require(block.timestamp > r.challengeEndTime, "Challenge active");
 
         r.status = Status.Finalized;
 
         // Reward the Majority Voters (The ones who won without challenge)
         bool isVerified = (r.votesFor > r.votesAgainst);
-        
+        uint256 tokenReward = (JUDGE_STAKE / 5 * 10 ** decimals()) /getBuyPrice();
+
         for (uint i = 0; i < r.voters.length; i++) {
             address judgeAddr = r.voters[i];
             bool judgeSupported = judgeVotes[_id][judgeAddr].support;
-            
-            // Only reward judges who aligned with the final outcome
+
             if (judgeSupported == isVerified) {
                 reputation[judgeAddr] += 5;
-                uint256 tokenReward = (0.2 * JUDGE_STAKE * 10**decimals()) / getBuyPrice();
                 _mint(judgeAddr, tokenReward);
             } else {
                 reputation[judgeAddr] -= 5;
@@ -214,7 +306,7 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
         } else {
             _slashProducer(r.producer);
         }
-        
+
         emit ReportFinalized(_id, Status.Finalized);
     }
 
@@ -222,23 +314,25 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
 
     function getBuyPrice() public view returns (uint256) {
         if (totalSupply() == 0) return BASE_PRICE;
-        return (address(this).balance * 10**decimals()) / totalSupply();
-}
+        return (address(this).balance * 10 ** decimals()) / totalSupply();
+    }
 
-    function buyTokens() external onlyRole(PRODUCER_ROLE) payable nonReentrant {
+    function buyTokens() external payable onlyRole(PRODUCER_ROLE) nonReentrant {
         uint256 pricePerToken = getBuyPrice();
         require(msg.value >= pricePerToken, "Sent ETH too low");
-        
-        uint256 amountToMint = (msg.value * 10**decimals()) / pricePerToken;
+
+        uint256 amountToMint = (msg.value * 10 ** decimals()) / pricePerToken;
         _mint(msg.sender, amountToMint);
         emit TokensPurchased(msg.sender, amountToMint, pricePerToken);
     }
 
-    function sellTokens(uint256 amount) external onlyRole(PRODUCER_ROLE) nonReentrant {
+    function sellTokens(
+        uint256 amount
+    ) external onlyRole(PRODUCER_ROLE) nonReentrant {
         require(balanceOf(msg.sender) >= amount, "Insufficient tokens");
-        
-        uint256 spotPrice = getBuyPrice(); 
-        uint256 payout = (amount * spotPrice) / 10**decimals();
+
+        uint256 spotPrice = getBuyPrice();
+        uint256 payout = (amount * spotPrice) / 10 ** decimals();
         require(address(this).balance >= payout, "Contract Reserve low");
 
         _burn(msg.sender, amount);
@@ -257,12 +351,13 @@ contract WineCarbonProtocol is ERC20, ERC20Burnable, AccessControl, ReentrancyGu
     function _processEcoLogic(Report storage r) internal {
         if (r.co2Emitted <= r.threshold) {
             uint256 savings = r.threshold - r.co2Emitted;
-            uint256 rewardAmount = savings * 10**decimals();
+            uint256 rewardAmount = savings * 10 ** decimals();
             if (rewardAmount > 0) _mint(r.producer, rewardAmount);
         } else {
             uint256 excess = r.co2Emitted - r.threshold;
-            uint256 fineAmount = excess * 10**decimals();
-            if (balanceOf(r.producer) >= fineAmount) _burn(r.producer, fineAmount);
+            uint256 fineAmount = excess * 10 ** decimals();
+            if (balanceOf(r.producer) >= fineAmount)
+                _burn(r.producer, fineAmount);
             else carbonDebt[r.producer] += fineAmount;
         }
     }
