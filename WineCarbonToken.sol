@@ -428,7 +428,16 @@ contract WineCarbonProtocol is
     }
 
     function _slashProducer(address _producer) internal {
-        uint256 fineAmount = balanceOf(_producer) / 2;
-        _burn(_producer, fineAmount);
+        uint256 penalty = 150 * 10**18;
+        uint256 currentBalance = balanceOf(_producer);
+
+        if (currentBalance >= penalty) {
+            _burn(_producer, penalty);
+        } else {
+            if (currentBalance > 0) {
+                _burn(_producer, currentBalance);
+            }
+            carbonDebt[_producer] += (penalty - currentBalance);
+        }
     }
 }
