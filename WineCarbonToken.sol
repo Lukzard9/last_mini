@@ -22,15 +22,18 @@ contract WineCarbonProtocol is
     uint256 public constant CHALLENGE_BOND = 0.02 ether;
     uint256 public constant CHALLENGE_WINDOW = 2 minutes; //72h
 
-    uint256 public constant VOTE_QUORUM = 10;
+    uint256 public constant VOTE_QUORUM = 50;
     uint256 public constant BASE_PRICE = 0.0001 ether;
+    uint256 public constant PRICE_SLOPE = 0.000001 ether;
+    uint256 public constant IMPROVEMENT_WEIGHT = 20;
+    uint256 public constant TOLERANCE_WEIGHT = 5;
 
     uint256 public constant CO2_PER_ENERGY = 500; // e.g., 500g CO2 per kWh
     uint256 public constant CO2_PER_WATER = 10; // e.g., 10g CO2 per Liter
     uint256 public constant CO2_PER_CHEMICAL = 2000; // e.g., 2000g CO2 per kg of synthetic pesticide
     uint256 public constant CO2_PER_LOGISTICS = 100; // e.g., 100g CO2 per kg-km (weight * distance)
 
-    uint256 public globalCo2Threshold;
+    uint256 public globalCo2Threshold = 1200; // Initial CO2 threshold in g/L
 
     enum Status {
         Pending,
@@ -44,7 +47,7 @@ contract WineCarbonProtocol is
         address producer;
         string ipfsHash;
         ProductionMetrics metrics;
-        uint256 co2Emitted;
+        uint256 co2PerLiter;
         uint256 threshold;
         Status status;
         Status originalStatus;
@@ -57,6 +60,7 @@ contract WineCarbonProtocol is
     }
 
     struct ProductionMetrics {
+        uint256 wineProduced; // Amount of wine in Liters
         uint256 energyUsed; // Energy Consumption
         uint256 waterUsed; // Water Usage
         uint256 chemicalUsage; // Chemical Footprint
@@ -127,19 +131,13 @@ contract WineCarbonProtocol is
 
     // --- 2. DATA INPUT ---
 
-    function setGlobalThreshold(
-        uint256 _newThreshold
-    ) external onlyRole(GOVERNANCE_ROLE) {
-        globalCo2Threshold = _newThreshold;
-    }
-
     function submitReport(
         ProductionMetrics calldata _metrics,
         string calldata _ipfsHash
     ) external onlyRole(PRODUCER_ROLE) {
         require(carbonDebt[msg.sender] == 0, "Must settle carbon debt");
 
-        (Report memory newReport, uint256 finalCo2) = computeAndSetCO2(
+        (Report memory newReport, uint256 co2PerLiter) = computeAndSetCO2(
             _metrics
         );
 
@@ -149,12 +147,13 @@ contract WineCarbonProtocol is
         newReport.status = Status.Pending;
         newReport.submissionTime = block.timestamp;
 
-        emit ReportSubmitted(reportCount, msg.sender, finalCo2, _ipfsHash);
+        emit ReportSubmitted(reportCount, msg.sender, co2PerLiter, _ipfsHash);
     }
 
     function computeAndSetCO2(
         ProductionMetrics calldata _metrics
     ) internal returns (Report memory, uint256) {
+        require(_metrics.wineProduced > 0, "Production cannot be zero");
         uint256 grossEmissions = (_metrics.energyUsed * CO2_PER_ENERGY) +
             (_metrics.waterUsed * CO2_PER_WATER) +
             (_metrics.chemicalUsage * CO2_PER_CHEMICAL) +
@@ -166,6 +165,9 @@ contract WineCarbonProtocol is
         } else {
             finalCo2 = grossEmissions - _metrics.sequestration;
         }
+
+        uint256 co2PerLiter = finalCo2 / _metrics.wineProduced;
+
         reportCount++;
         Report storage newReport = reports[reportCount];
         ProductionMetrics memory newMetrics;
@@ -175,8 +177,8 @@ contract WineCarbonProtocol is
         newMetrics.logisticsScore = _metrics.logisticsScore;
         newMetrics.sequestration = _metrics.sequestration;
         newReport.metrics = newMetrics;
-        newReport.co2Emitted = finalCo2;
-        return (newReport, finalCo2);
+        newReport.co2PerLiter = co2PerLiter;
+        return (newReport, co2PerLiter);
     }
 
     // --- 3. VOTING (THE ECO-JUDGE) ---
@@ -266,6 +268,7 @@ contract WineCarbonProtocol is
 
         if (isVerifiedCorrect) {
             _processEcoLogic(r);
+            _updateGlobalThreshold(r.co2PerLiter);
         } else {
             _slashProducer(r.producer);
         }
@@ -297,12 +300,17 @@ contract WineCarbonProtocol is
                 reputation[judgeAddr] += 5;
                 _mint(judgeAddr, tokenReward);
             } else {
-                reputation[judgeAddr] -= 5;
+                if (reputation[judgeAddr] > 5) {
+                    reputation[judgeAddr] -= 5;
+                } else {
+                    reputation[judgeAddr] = 0;
+                }
             }
         }
 
         if (isVerified) {
             _processEcoLogic(r);
+            _updateGlobalThreshold(r.co2PerLiter);
         } else {
             _slashProducer(r.producer);
         }
@@ -313,8 +321,7 @@ contract WineCarbonProtocol is
     // --- 6. BONDING CURVE & MARKET ---
 
     function getBuyPrice() public view returns (uint256) {
-        if (totalSupply() == 0) return BASE_PRICE;
-        return (address(this).balance * 10 ** decimals()) / totalSupply();
+        return BASE_PRICE + (totalSupply() * PRICE_SLOPE); 
     }
 
     function buyTokens() external payable onlyRole(PRODUCER_ROLE) nonReentrant {
@@ -349,16 +356,28 @@ contract WineCarbonProtocol is
     // --- HELPERS ---
 
     function _processEcoLogic(Report storage r) internal {
-        if (r.co2Emitted <= r.threshold) {
-            uint256 savings = r.threshold - r.co2Emitted;
+        if (r.co2PerLiter <= r.threshold) {
+            uint256 savings = r.threshold - r.co2PerLiter;
             uint256 rewardAmount = savings * 10 ** decimals();
             if (rewardAmount > 0) _mint(r.producer, rewardAmount);
         } else {
-            uint256 excess = r.co2Emitted - r.threshold;
+            uint256 excess = r.co2PerLiter - r.threshold;
             uint256 fineAmount = excess * 10 ** decimals();
             if (balanceOf(r.producer) >= fineAmount)
                 _burn(r.producer, fineAmount);
             else carbonDebt[r.producer] += fineAmount;
+        }
+    }
+
+    function _updateGlobalThreshold(uint256 _newVerifiedCo2) internal {
+        if (_newVerifiedCo2 < globalCo2Threshold) {
+            uint256 diff = globalCo2Threshold - _newVerifiedCo2;
+            uint256 change = (diff * IMPROVEMENT_WEIGHT) / 100;
+            globalCo2Threshold -= change;
+        } else {
+            uint256 diff = _newVerifiedCo2 - globalCo2Threshold;
+            uint256 change = (diff * TOLERANCE_WEIGHT) / 100;
+            globalCo2Threshold += change;
         }
     }
 
