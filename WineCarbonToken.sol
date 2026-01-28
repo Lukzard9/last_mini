@@ -255,7 +255,7 @@ contract WineCarbonProtocol is
             payable(r.challenger).transfer(CHALLENGE_BOND);
 
             uint256 tokenReward = (CHALLENGE_BOND * 10 ** decimals()) /
-                getBuyPrice();
+                getPriceAtSupply(totalSupply());
             _mint(r.challenger, tokenReward);
 
             isVerifiedCorrect = (r.originalStatus == Status.Rejected);
@@ -290,7 +290,7 @@ contract WineCarbonProtocol is
 
         // Reward the Majority Voters (The ones who won without challenge)
         bool isVerified = (r.votesFor > r.votesAgainst);
-        uint256 tokenReward = (JUDGE_STAKE / 5 * 10 ** decimals()) /getBuyPrice();
+        uint256 tokenReward = (JUDGE_STAKE / 5 * 10 ** decimals()) / getPriceAtSupply(totalSupply());
 
         for (uint i = 0; i < r.voters.length; i++) {
             address judgeAddr = r.voters[i];
@@ -320,26 +320,56 @@ contract WineCarbonProtocol is
 
     // --- 6. BONDING CURVE & MARKET ---
 
-    function getBuyPrice() public view returns (uint256) {
-        return BASE_PRICE + (totalSupply() * PRICE_SLOPE); 
+    // Helper to calculate linear price at a specific supply
+    // P(x) = BASE + SLOPE * (x / 1e18)
+    function getPriceAtSupply(uint256 _supply) public view returns (uint256) {
+        return BASE_PRICE + ((_supply * PRICE_SLOPE) / 10**decimals()); 
     }
 
-    function buyTokens() external payable onlyRole(PRODUCER_ROLE) nonReentrant {
-        uint256 pricePerToken = getBuyPrice();
-        require(msg.value >= pricePerToken, "Sent ETH too low");
+    // Calculate exact ETH cost to mint 'amount' of tokens
+    function getMintingCost(uint256 amount) public view returns (uint256) {
+        uint256 currentSupply = totalSupply();
+        uint256 newSupply = currentSupply + amount;
 
-        uint256 amountToMint = (msg.value * 10 ** decimals()) / pricePerToken;
+        uint256 priceStart = getPriceAtSupply(currentSupply);
+        uint256 priceEnd = getPriceAtSupply(newSupply);
+
+        // Area of trapezoid = width * (height1 + height2) / 2
+        // We divide by 10**decimals() to handle the scaling of 'amount'
+        return (amount * (priceStart + priceEnd)) / (2 * 10**decimals());
+    }
+
+    // Calculate exact ETH payout for burning 'amount' of tokens
+    function getBurningReward(uint256 amount) public view returns (uint256) {
+        uint256 currentSupply = totalSupply();
+        require(currentSupply >= amount, "Insufficient supply");
+        uint256 newSupply = currentSupply - amount;
+
+        uint256 priceStart = getPriceAtSupply(currentSupply);
+        uint256 priceEnd = getPriceAtSupply(newSupply);
+
+        return (amount * (priceStart + priceEnd)) / (2 * 10**decimals());
+    }
+
+    function buyTokens(uint256 amountToMint) external payable onlyRole(PRODUCER_ROLE) nonReentrant {
+        uint256 requiredEth = getMintingCost(amountToMint);
+        require(msg.value >= requiredEth, "Insufficient ETH sent");
+
         _mint(msg.sender, amountToMint);
-        emit TokensPurchased(msg.sender, amountToMint, pricePerToken);
+        emit TokensPurchased(msg.sender, amountToMint, requiredEth);
+
+        // Refund excess ETH
+        uint256 excess = msg.value - requiredEth;
+        if (excess > 0) {
+            payable(msg.sender).transfer(excess);
+        }
     }
 
-    function sellTokens(
-        uint256 amount
-    ) external onlyRole(PRODUCER_ROLE) nonReentrant {
+    function sellTokens(uint256 amount) external onlyRole(PRODUCER_ROLE) nonReentrant {
         require(balanceOf(msg.sender) >= amount, "Insufficient tokens");
-
-        uint256 spotPrice = getBuyPrice();
-        uint256 payout = (amount * spotPrice) / 10 ** decimals();
+        
+        uint256 payout = getBurningReward(amount);
+        
         require(address(this).balance >= payout, "Contract Reserve low");
 
         _burn(msg.sender, amount);
