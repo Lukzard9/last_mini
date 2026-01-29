@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WineCarbonProtocol Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.1/ethers.umd.min.js"></script>
+    <style>
+      :root {
+        --primary: #722f37;
+        --bg: #f5f5f5;
+        --card-bg: #ffffff;
+        --text: #333;
+      }
+      body {
+        font-family: sans-serif;
+        background-color: var(--bg);
+        color: var(--text);
+        margin: 0;
+        padding-bottom: 50px;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        background-color: var(--primary);
+        color: white;
+        padding: 10px 20px;
+        z-index: 1000;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+      }
+      .stats-bar {
+        display: flex;
+        gap: 15px;
+        font-size: 0.9rem;
+        flex-wrap: wrap;
+      }
+      .stat-item {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 5px 10px;
+        border-radius: 4px;
+      }
+      .btn-connect {
+        background: #fff;
+        color: var(--primary);
+        border: none;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-weight: bold;
+        border-radius: 4px;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 20px auto;
+        padding: 0 15px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .full-width {
+        grid-column: span 2;
+      }
+      .card {
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h2 {
+        margin-top: 0;
+        border-bottom: 2px solid var(--primary);
+        padding-bottom: 10px;
+        color: var(--primary);
+        font-size: 1.2rem;
+      }
+      .action-btn {
+        background-color: var(--primary);
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        width: 100%;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+      .action-btn:hover {
+        opacity: 0.9;
+      }
+      .btn-green {
+        background-color: #27ae60 !important;
+      }
+      .btn-red {
+        background-color: #c0392b !important;
+      }
+      .btn-orange {
+        background-color: #d35400 !important;
+      }
+      .report-item {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        background: #fafafa;
+      }
+      .report-header {
+        display: flex;
+        justify-content: space-between;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      .report-status {
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: white;
+      }
+      .status-0 {
+        background-color: #f39c12;
+      }
+      .status-1 {
+        background-color: #27ae60;
+      }
+      .status-2 {
+        background-color: #c0392b;
+      }
+      .status-3 {
+        background-color: #8e44ad;
+      }
+      .status-4 {
+        background-color: #2c3e50;
+      }
+      .metric-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
+        font-size: 0.85rem;
+        margin: 10px 0;
+      }
+      #console-output {
+        background: #222;
+        color: #0f0;
+        padding: 10px;
+        font-family: monospace;
+        height: 150px;
+        overflow-y: scroll;
+        font-size: 0.8rem;
+        border-radius: 4px;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        margin-bottom: 5px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      label {
+        font-size: 0.85rem;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div style="font-weight: bold; font-size: 1.2rem">🍷 WineCarbon UI</div>
+      <div class="stats-bar" id="statsBar" style="display: none">
+        <div class="stat-item">Role: <span id="userRole">None</span></div>
+        <div class="stat-item">ETH: <span id="ethBal">0.00</span></div>
+        <div class="stat-item">WINE: <span id="wineBal">0.00</span></div>
+        <div class="stat-item">Reputation: <span id="userRep">0</span></div>
+        <div class="stat-item">C-Debt: <span id="userDebt">0</span></div>
+      </div>
+      <button id="connectBtn" class="btn-connect" onclick="connectWallet()">Connect Wallet</button>
+    </header>
+
+    <div class="container">
+      <div class="card">
+        <h2>1. Role Setup</h2>
+        <div style="display: flex; gap: 10px">
+          <button class="action-btn" onclick="joinProducer()">Join Producer (0.01 ETH)</button>
+          <button class="action-btn btn-orange" onclick="joinJudge()">Join Judge (0.01 ETH)</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. WINE Market</h2>
+        <div class="metric-grid">
+          <div><label>Buy</label><input type="number" id="buyAmount" placeholder="100" /><button class="action-btn btn-green" onclick="buyTokens()">Buy</button></div>
+          <div><label>Sell</label><input type="number" id="sellAmount" placeholder="100" /><button class="action-btn btn-red" onclick="sellTokens()">Sell</button></div>
+        </div>
+        <div style="margin-top: 5px"><label>Settle Debt</label><input type="number" id="settleAmount" placeholder="Amount" /><button class="action-btn" onclick="settleDebt()">Settle</button></div>
+      </div>
+
+      <div class="card full-width">
+        <h2>3. Submit Production Report</h2>
+        <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr)">
+          <div><label>Wine (L)</label><input type="number" id="inp_wine" value="10000" /></div>
+          <div><label>Energy (kWh)</label><input type="number" id="inp_energy" value="3500" /></div>
+          <div><label>Water (L)</label><input type="number" id="inp_water" value="40000" /></div>
+          <div><label>Chemicals (kg)</label><input type="number" id="inp_chem" value="12" /></div>
+          <div><label>Logistics (kg-km)</label><input type="number" id="inp_log" value="8000000" /></div>
+          <div><label>Sequestration (kg)</label><input type="number" id="inp_seq" value="2500" /></div>
+        </div>
+        <div><label>IPFS Hash</label><input type="text" id="inp_ipfs" value="QmSimulatedHash" /></div>
+        <button class="action-btn" onclick="submitReport()">Submit Report</button>
+      </div>
+
+      <div class="card full-width">
+        <h2>4. Active Reports & Governance</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+          <button class="action-btn" style="width: auto; padding: 5px 15px" onclick="refreshReports()">Refresh Reports</button>
+          <span style="font-size: 0.8rem">Global Threshold: <span id="globalThreshold">...</span> g/L</span>
+        </div>
+        <div id="reportsList" style="min-height: 50px">Connect wallet to load reports.</div>
+        <div style="margin-top: 10px; font-size: 0.8rem; color: #666; background: #eee; padding: 10px; border-radius: 4px"><strong>Note:</strong> Detailed metrics (Wine L, Energy, etc.) are hidden because the contract getter skips nested structures. Also, Producer/Limit may show as 0 due to a known issue in the deployed contract logic (memory vs storage write).</div>
+      </div>
+
+      <div class="card full-width" style="background: #222; border: none; color: white">
+        <h2 style="color: #fff; border-bottom: 1px solid #444">Logs</h2>
+        <div id="console-output"></div>
+      </div>
+    </div>
+
+    <script>
+      const CONTRACT_ADDRESS = "0x01f9008ea8bf522f2bef51088919c3369b1cd686"; // <--- UPDATE THIS
+
+      // CORRECTED ABI: Omits the nested 'metrics' struct because Solidity getters skip it.
+      const ABI = [
+        "function joinAsProducer() external payable",
+        "function joinAsJudge() external payable",
+        "function submitReport((uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration) _metrics, string _ipfsHash) external",
+        "function vote(uint256 _id, bool _support) external",
+        "function validateVoteResult(uint256 _id) external",
+        "function challengeReport(uint256 _id) external payable",
+        "function resolveChallenge(uint256 _id, bool upholdOriginalDecision) external",
+        "function finalize(uint256 _id) external",
+        "function buyTokens(uint256 amountToMint) external payable",
+        "function sellTokens(uint256 amount) external",
+        "function settleDebt(uint256 amount) external",
+        "function getMintingCost(uint256 amount) public view returns (uint256)",
+        "function reportCount() public view returns (uint256)",
+        // Mapped based on actual return values (Skipping nested struct)
+        "function reports(uint256) public view returns (address producer, string ipfsHash, uint256 co2PerLiter, uint256 threshold, uint8 status, uint8 originalStatus, uint256 submissionTime, uint256 votesFor, uint256 votesAgainst, uint256 challengeEndTime, address challenger)",
+        "function balanceOf(address account) public view returns (uint256)",
+        "function carbonDebt(address account) public view returns (uint256)",
+        "function reputation(address account) public view returns (uint256)",
+        "function globalCo2Threshold() public view returns (uint256)",
+        "function hasRole(bytes32 role, address account) public view returns (bool)",
+        "function decimals() public view returns (uint8)",
+      ];
+
+      const PRODUCER_ROLE = ethers.id("PRODUCER_ROLE");
+      const JUDGE_ROLE = ethers.id("JUDGE_ROLE");
+      const GOV_ROLE = ethers.id("GOVERNANCE_ROLE");
+      const ADMIN_ROLE = ethers.ZeroHash;
+
+      let provider, signer, contract, userAddress;
+
+      function log(msg) {
+        const div = document.getElementById("console-output");
+        div.innerHTML += `> ${msg}<br>`;
+        div.scrollTop = div.scrollHeight;
+        console.log(msg);
+      }
+
+      async function connectWallet() {
+        if (!window.ethereum) return alert("Install MetaMask");
+        try {
+          provider = new ethers.BrowserProvider(window.ethereum);
+          signer = await provider.getSigner();
+          userAddress = await signer.getAddress();
+          contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
+
+          document.getElementById("connectBtn").innerText = userAddress.substring(0, 6) + "...";
+          document.getElementById("statsBar").style.display = "flex";
+          await updateStats();
+          log("Connected: " + userAddress);
+        } catch (e) {
+          log(e.message);
+        }
+      }
+
+      async function updateStats() {
+        if (!contract) return;
+        try {
+          const ethBal = await provider.getBalance(userAddress);
+          const wineBal = await contract.balanceOf(userAddress);
+          const decimals = await contract.decimals();
+          const debt = await contract.carbonDebt(userAddress);
+          const rep = await contract.reputation(userAddress);
+          const gThresh = await contract.globalCo2Threshold();
+
+          const [isProd, isJudge, isGov] = await Promise.all([contract.hasRole(PRODUCER_ROLE, userAddress), contract.hasRole(JUDGE_ROLE, userAddress), contract.hasRole(GOV_ROLE, userAddress)]);
+
+          let roles = [];
+          if (isProd) roles.push("Producer");
+          if (isJudge) roles.push("Judge");
+          if (isGov) roles.push("Gov");
+
+          document.getElementById("userRole").innerText = roles.length ? roles.join(", ") : "None";
+          document.getElementById("ethBal").innerText = parseFloat(ethers.formatEther(ethBal)).toFixed(4);
+          document.getElementById("wineBal").innerText = parseFloat(ethers.formatUnits(wineBal, decimals)).toFixed(2);
+          document.getElementById("userRep").innerText = rep;
+          document.getElementById("userDebt").innerText = parseFloat(ethers.formatUnits(debt, decimals)).toFixed(2);
+          document.getElementById("globalThreshold").innerText = gThresh;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // --- ACTIONS ---
+      async function joinProducer() {
+        try {
+          const tx = await contract.joinAsProducer({ value: ethers.parseEther("0.01") });
+          await tx.wait();
+          log("Joined as Producer");
+          updateStats();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function joinJudge() {
+        try {
+          const tx = await contract.joinAsJudge({ value: ethers.parseEther("0.01") });
+          await tx.wait();
+          log("Joined as Judge");
+          updateStats();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function buyTokens() {
+        const val = document.getElementById("buyAmount").value;
+        if (!val) return;
+        try {
+          const wei = ethers.parseUnits(val, 18);
+          const cost = await contract.getMintingCost(wei);
+          const tx = await contract.buyTokens(wei, { value: cost });
+          await tx.wait();
+          log("Bought WINE");
+          updateStats();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function sellTokens() {
+        const val = document.getElementById("sellAmount").value;
+        if (!val) return;
+        try {
+          const tx = await contract.sellTokens(ethers.parseUnits(val, 18));
+          await tx.wait();
+          log("Sold WINE");
+          updateStats();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function settleDebt() {
+        const val = document.getElementById("settleAmount").value;
+        if (!val) return;
+        try {
+          const tx = await contract.settleDebt(ethers.parseUnits(val, 18));
+          await tx.wait();
+          log("Debt Settled");
+          updateStats();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function submitReport() {
+        try {
+          const metrics = {
+            wineProduced: document.getElementById("inp_wine").value,
+            energyUsed: document.getElementById("inp_energy").value,
+            waterUsed: document.getElementById("inp_water").value,
+            chemicalUsage: document.getElementById("inp_chem").value,
+            logisticsScore: document.getElementById("inp_log").value,
+            sequestration: document.getElementById("inp_seq").value,
+          };
+          const ipfs = document.getElementById("inp_ipfs").value;
+          const tx = await contract.submitReport(metrics, ipfs);
+          await tx.wait();
+          log("Report Submitted");
+          updateStats();
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+
+      // --- REPORT HANDLING ---
+      async function refreshReports() {
+        const list = document.getElementById("reportsList");
+        list.innerHTML = "Loading...";
+        try {
+          const count = await contract.reportCount();
+          let html = "";
+          const statusLabels = ["Pending", "Verified", "Rejected", "Challenged", "Finalized"];
+
+          for (let i = Number(count); i >= 1; i--) {
+            const r = await contract.reports(i);
+            // Correctly mapped values from the NEW ABI:
+            // 0: producer, 1: ipfs, 2: co2, 3: threshold, 4: status, 5: origStatus, 6: time, 7: for, 8: against, 9: end
+            const id = i;
+            const producer = r[0]; // Will be 0x000... (Bug)
+            const co2 = r[2];
+            const threshold = r[3]; // Will be 0 (Bug)
+            const statusIdx = Number(r[4]);
+            const votesFor = r[7];
+            const votesAgainst = r[8];
+            const challengeEnd = Number(r[9]);
+            const now = Math.floor(Date.now() / 1000);
+
+            let actions = "";
+            if (statusIdx === 0) {
+              actions += `<button onclick="vote(${id}, true)" class="btn-green" style="width:auto; margin:2px;">Vote Yes</button>`;
+              actions += `<button onclick="vote(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Vote No</button>`;
+              if (Number(votesFor) + Number(votesAgainst) >= 50) {
+                actions += `<button onclick="validate(${id})" class="action-btn" style="width:auto; margin:2px;">Validate</button>`;
+              }
+            } else if (statusIdx === 1 || statusIdx === 2) {
+              if (now < challengeEnd) {
+                actions += `<button onclick="challenge(${id})" class="btn-orange" style="width:auto; margin:2px;">Challenge</button>`;
+                actions += `<span style="font-size:0.8rem; color:red; margin-left:5px;">Window Open</span>`;
+              } else {
+                actions += `<button onclick="finalize(${id})" class="action-btn" style="width:auto; margin:2px;">Finalize</button>`;
+              }
+            } else if (statusIdx === 3) {
+              actions += `<button onclick="resolve(${id}, true)" class="action-btn" style="width:auto; margin:2px;">Uphold</button>`;
+              actions += `<button onclick="resolve(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Overturn</button>`;
+            }
+
+            html += `
+                <div class="report-item">
+                    <div class="report-header">
+                        <span>#${id} - Producer: ${producer.substring(0, 6)}...</span>
+                        <span class="report-status status-${statusIdx}">${statusLabels[statusIdx]}</span>
+                    </div>
+                    <div class="metric-grid">
+                        <span>CO2/L: ${co2} g (Target: ${threshold})</span>
+                        <span>Votes: ✅ ${votesFor} / ❌ ${votesAgainst}</span>
+                    </div>
+                    <div style="margin-top:5px;">${actions}</div>
+                </div>`;
+          }
+          list.innerHTML = html || "No reports.";
+        } catch (e) {
+          log("Load Error: " + e.message);
+          list.innerHTML = "Error loading reports.";
+        }
+      }
+
+      async function vote(id, s) {
+        try {
+          await (await contract.vote(id, s)).wait();
+          log("Voted");
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function validate(id) {
+        try {
+          await (await contract.validateVoteResult(id)).wait();
+          log("Validated");
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function challenge(id) {
+        try {
+          await (await contract.challengeReport(id, { value: ethers.parseEther("0.02") })).wait();
+          log("Challenged");
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function finalize(id) {
+        try {
+          await (await contract.finalize(id)).wait();
+          log("Finalized");
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+      async function resolve(id, up) {
+        try {
+          await (await contract.resolveChallenge(id, up)).wait();
+          log("Resolved");
+          refreshReports();
+        } catch (e) {
+          log(e.message);
+        }
+      }
+    </script>
+  </body>
+</html>

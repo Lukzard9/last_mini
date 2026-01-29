@@ -28,10 +28,10 @@ contract WineCarbonProtocol is
     uint256 public constant IMPROVEMENT_WEIGHT = 20;
     uint256 public constant TOLERANCE_WEIGHT = 5;
 
-    uint256 public constant CO2_PER_ENERGY = 500; // e.g., 500g CO2 per kWh
-    uint256 public constant CO2_PER_WATER = 10; // e.g., 10g CO2 per Liter
-    uint256 public constant CO2_PER_CHEMICAL = 2000; // e.g., 2000g CO2 per kg of synthetic pesticide
-    uint256 public constant CO2_PER_LOGISTICS = 100; // e.g., 100g CO2 per kg-km (weight * distance)
+    uint256 public constant CO2_PER_ENERGY = 500; // CO2 per kWh
+    uint256 public constant CO2_PER_WATER = 2; // CO2 per Liter
+    uint256 public constant CO2_PER_CHEMICAL = 20000; // CO2 per kg of synthetic pesticide
+    uint256 public constant CO2_PER_LOGISTICS = 1; // CO2 per kg-km (weight * distance)
 
     uint256 public globalCo2Threshold = 1200; // Initial CO2 threshold in g/L
 
@@ -137,22 +137,21 @@ contract WineCarbonProtocol is
     ) external onlyRole(PRODUCER_ROLE) {
         require(carbonDebt[msg.sender] == 0, "Must settle carbon debt");
 
-        (Report memory newReport, uint256 co2PerLiter) = computeAndSetCO2(
-            _metrics
-        );
+        computeAndSetCO2(_metrics);
 
-        newReport.producer = msg.sender;
-        newReport.ipfsHash = _ipfsHash;
-        newReport.threshold = globalCo2Threshold;
-        newReport.status = Status.Pending;
-        newReport.submissionTime = block.timestamp;
+        Report storage r = reports[reportCount];
+        r.producer = msg.sender;
+        r.ipfsHash = _ipfsHash;
+        r.threshold = globalCo2Threshold;
+        r.status = Status.Pending;
+        r.submissionTime = block.timestamp;
 
-        emit ReportSubmitted(reportCount, msg.sender, co2PerLiter, _ipfsHash);
+        emit ReportSubmitted(reportCount, msg.sender, r.co2PerLiter, _ipfsHash);
     }
 
     function computeAndSetCO2(
         ProductionMetrics calldata _metrics
-    ) internal returns (Report memory, uint256) {
+    ) internal {
         require(_metrics.wineProduced > 0, "Production cannot be zero");
         uint256 grossEmissions = (_metrics.energyUsed * CO2_PER_ENERGY) +
             (_metrics.waterUsed * CO2_PER_WATER) +
@@ -178,7 +177,6 @@ contract WineCarbonProtocol is
         newMetrics.sequestration = _metrics.sequestration;
         newReport.metrics = newMetrics;
         newReport.co2PerLiter = co2PerLiter;
-        return (newReport, co2PerLiter);
     }
 
     // --- 3. VOTING (THE ECO-JUDGE) ---
