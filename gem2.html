@@ -215,7 +215,6 @@
           <span style="font-size: 0.8rem">Global Threshold: <span id="globalThreshold">...</span> g/L</span>
         </div>
         <div id="reportsList" style="min-height: 50px">Connect wallet to load reports.</div>
-        <div style="margin-top: 10px; font-size: 0.8rem; color: #666; background: #eee; padding: 10px; border-radius: 4px"><strong>Note:</strong> Detailed metrics (Wine L, Energy, etc.) are hidden because the contract getter skips nested structures. Also, Producer/Limit may show as 0 due to a known issue in the deployed contract logic (memory vs storage write).</div>
       </div>
 
       <div class="card full-width" style="background: #222; border: none; color: white">
@@ -225,7 +224,7 @@
     </div>
 
     <script>
-      const CONTRACT_ADDRESS = "0x01f9008ea8bf522f2bef51088919c3369b1cd686"; // <--- UPDATE THIS
+      const CONTRACT_ADDRESS = "0x95e612ec2ccd7f5daa13c6732c88e9aa3295ae0d"; // <--- UPDATE THIS
 
       // CORRECTED ABI: Omits the nested 'metrics' struct because Solidity getters skip it.
       const ABI = [
@@ -243,7 +242,7 @@
         "function getMintingCost(uint256 amount) public view returns (uint256)",
         "function reportCount() public view returns (uint256)",
         // Mapped based on actual return values (Skipping nested struct)
-        "function reports(uint256) public view returns (address producer, string ipfsHash, uint256 co2PerLiter, uint256 threshold, uint8 status, uint8 originalStatus, uint256 submissionTime, uint256 votesFor, uint256 votesAgainst, uint256 challengeEndTime, address challenger)",
+        "function reports(uint256) public view returns (address producer, string ipfsHash, uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration, uint256 co2PerLiter, uint256 threshold, uint8 status, uint8 originalStatus, uint256 submissionTime, uint256 votesFor, uint256 votesAgainst, uint256 challengeEndTime, address challenger)",
         "function balanceOf(address account) public view returns (uint256)",
         "function carbonDebt(address account) public view returns (uint256)",
         "function reputation(address account) public view returns (uint256)",
@@ -406,12 +405,12 @@
             // 0: producer, 1: ipfs, 2: co2, 3: threshold, 4: status, 5: origStatus, 6: time, 7: for, 8: against, 9: end
             const id = i;
             const producer = r[0]; // Will be 0x000... (Bug)
-            const co2 = r[2];
-            const threshold = r[3]; // Will be 0 (Bug)
-            const statusIdx = Number(r[4]);
-            const votesFor = r[7];
-            const votesAgainst = r[8];
-            const challengeEnd = Number(r[9]);
+            const co2 = r[8];
+            const threshold = r[9]; // Will be 0 (Bug)
+            const statusIdx = Number(r[10]);
+            const votesFor = r[13];
+            const votesAgainst = r[14];
+            const challengeEnd = Number(r[15]);
             const now = Math.floor(Date.now() / 1000);
 
             let actions = "";

@@ -170,6 +170,7 @@ contract WineCarbonProtocol is
         reportCount++;
         Report storage newReport = reports[reportCount];
         ProductionMetrics memory newMetrics;
+        newMetrics.wineProduced = _metrics.wineProduced;
         newMetrics.energyUsed = _metrics.energyUsed;
         newMetrics.waterUsed = _metrics.waterUsed;
         newMetrics.chemicalUsage = _metrics.chemicalUsage;
