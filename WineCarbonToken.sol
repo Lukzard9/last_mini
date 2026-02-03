@@ -264,12 +264,14 @@ contract WineCarbonProtocol is
             if (judgeSupported == isVerified) {
                 reputation[judgeAddr] += 5;
                 _mint(judgeAddr, tokenReward);
+                emit JudgeRewarded(judgeAddr, tokenReward);
             } else {
                 if (reputation[judgeAddr] <= 30) {
                     reputation[judgeAddr] = 0;
                 } else {
                     reputation[judgeAddr] = reputation[judgeAddr] / 2;
                 }
+                emit JudgeSlashed(judgeAddr, reputation[judgeAddr]);
             }
         }
 
