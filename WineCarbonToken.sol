@@ -265,7 +265,11 @@ contract WineCarbonProtocol is
                 reputation[judgeAddr] += 5;
                 _mint(judgeAddr, tokenReward);
             } else {
-                _slashWrongJudges(judgeAddr, isVerified);
+                if (reputation[judgeAddr] <= 30) {
+                    reputation[judgeAddr] = 0;
+                } else {
+                    reputation[judgeAddr] = reputation[judgeAddr] / 2;
+                }
             }
         }
 
