@@ -235,6 +235,7 @@ contract WineCarbonProtocol is
         }
 
         r.status = Status.Finalized;
+        r.originalStatus = isVerifiedCorrect ? Status.Verified : Status.Rejected;
 
         if (isVerifiedCorrect) {
             _processEcoLogic(r);
@@ -255,6 +256,7 @@ contract WineCarbonProtocol is
         r.status = Status.Finalized;
 
         bool isVerified = (r.votesFor > r.votesAgainst);
+        r.originalStatus = isVerified ? Status.Verified : Status.Rejected;
         uint256 tokenReward = (JUDGE_FEE / 5 * 10 ** decimals()) / getPriceAtSupply(totalSupply());
 
         for (uint i = 0; i < r.voters.length; i++) {
