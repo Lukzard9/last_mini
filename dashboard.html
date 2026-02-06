@@ -375,10 +375,9 @@
         }
       }
 
-      // --- REPORT HANDLING ---
       async function refreshReports() {
         const list = document.getElementById("reportsList");
-        const filterVal = document.getElementById("statusFilter").value; // Get filter value
+        const filterVal = document.getElementById("statusFilter").value;
 
         list.innerHTML = "Loading...";
         try {
@@ -391,12 +390,10 @@
 
             const statusIdx = Number(r[10]);
 
-            // FILTER CHECK: If filter is not 'all' and doesn't match status, skip this iteration
             if (filterVal !== "all" && filterVal != statusIdx) {
               continue;
             }
 
-            // Data Mapping
             const id = i;
             const producer = r[0];
             const ipfsHash = r[1];
@@ -409,6 +406,7 @@
             const co2 = r[8];
             const threshold = r[9];
             const finalVerdict = Number(r[11]);
+            const submissionTime = Number(r[12]);
             const votesFor = r[13];
             const votesAgainst = r[14];
             const challengeEnd = Number(r[15]);
@@ -417,25 +415,20 @@
             let outcomeBadge = "";
             if (statusIdx === 4) {
               if (finalVerdict === 1) {
-                // Status.Verified
-                outcomeBadge = `<div style="background:#27ae60; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">✅ FINAL DECISION: APPROVED</div>`;
+                outcomeBadge = `<div style="background:#27ae60; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">DATA VERIFIED</div>`;
               } else if (finalVerdict === 2) {
-                // Status.Rejected
-                outcomeBadge = `<div style="background:#c0392b; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">❌ FINAL DECISION: REJECTED</div>`;
+                outcomeBadge = `<div style="background:#c0392b; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">VERIFICATION FAILED</div>`;
               }
             }
 
             let actions = "";
-            // Button Logic
             if (statusIdx === 0) {
-              // Pending
               actions += `<button onclick="vote(${id}, true)" class="btn-green" style="width:auto; margin:2px;">Vote Yes</button>`;
               actions += `<button onclick="vote(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Vote No</button>`;
               if (Number(votesFor) + Number(votesAgainst) >= 50) {
                 actions += `<button onclick="validate(${id})" class="action-btn" style="width:auto; margin:2px;">Validate</button>`;
               }
             } else if (statusIdx === 1 || statusIdx === 2) {
-              // Verified or Rejected
               if (now < challengeEnd) {
                 actions += `<button onclick="challenge(${id})" class="btn-orange" style="width:auto; margin:2px;">Challenge</button>`;
                 actions += `<span style="font-size:0.8rem; color:red; margin-left:5px;">Window Open</span>`;
@@ -443,7 +436,6 @@
                 actions += `<button onclick="finalize(${id})" class="action-btn" style="width:auto; margin:2px;">Finalize</button>`;
               }
             } else if (statusIdx === 3) {
-              // Challenged
               actions += `<button onclick="resolve(${id}, true)" class="btn-green" style="width:auto; margin:2px;">Uphold</button>`;
               actions += `<button onclick="resolve(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Overturn</button>`;
             }
@@ -451,7 +443,7 @@
             html += `
                 <div class="report-item">
                     <div class="report-header">
-                        <span>#${id} - Producer: ${producer.substring(0, 6)}...</span>
+                        <span>#${id} - Producer: ${producer} --- Submitted at: ${new Date(submissionTime * 1000).toLocaleString()}</span>
                         <span class="report-status status-${statusIdx}">${statusLabels[statusIdx]}</span>
                     </div>
 
@@ -462,7 +454,7 @@
                              <span title="Energy used">Energy used: ${energy} kWh</span>
                              <span title="Water used">Water used: ${water} L</span>
                              <span title="Chemical pesticides">Chemical pesticides: ${chem} kg</span>
-                             <span title="Logistics score">Logistics score: ${logistics}</span>
+                             <span title="Logistics score">Logistics score: ${logistics} kg-km</span>
                              <span title="Sequestration">Sequestartion: ${seq} kg</span>
                         </div>
                         <div style="margin-top:6px; font-family:monospace; font-size:0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -474,7 +466,7 @@
                         <span>CO2/L: ${co2} g (Target: ${threshold})</span>
                         <span>Votes: ✅ ${votesFor} / ❌ ${votesAgainst}</span>
                     </div>
-                    <div style="margin-top:5px;">${actions}</div>
+                    ${outcomeBadge} <div style="margin-top:5px;">${actions}</div>
                 </div>`;
           }
           list.innerHTML = html || "No reports found for this filter.";
