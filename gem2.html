@@ -165,28 +165,28 @@
   </head>
   <body>
     <header>
-      <div style="font-weight: bold; font-size: 1.2rem">🍷 WineCarbon UI</div>
+      <div style="font-weight: bold; font-size: 1.2rem">WineCarbon Dashboard</div>
       <div class="stats-bar" id="statsBar" style="display: none">
         <div class="stat-item">Role: <span id="userRole">None</span></div>
         <div class="stat-item">ETH: <span id="ethBal">0.00</span></div>
         <div class="stat-item">WINE: <span id="wineBal">0.00</span></div>
         <div class="stat-item">Reputation: <span id="userRep">0</span></div>
-        <div class="stat-item">C-Debt: <span id="userDebt">0</span></div>
+        <div class="stat-item">Carbon Debt: <span id="userDebt">0</span></div>
       </div>
       <button id="connectBtn" class="btn-connect" onclick="connectWallet()">Connect Wallet</button>
     </header>
 
     <div class="container">
       <div class="card">
-        <h2>1. Role Setup</h2>
+        <h2>Role Setup</h2>
         <div style="display: flex; gap: 10px">
-          <button class="action-btn" onclick="joinProducer()">Join Producer (0.01 ETH)</button>
-          <button class="action-btn btn-orange" onclick="joinJudge()">Join Judge (0.01 ETH)</button>
+          <button class="action-btn" onclick="joinProducer()">Join as a Producer (0.01 ETH)</button>
+          <button class="action-btn btn-orange" onclick="joinJudge()">Join as a Judge (0.01 ETH)</button>
         </div>
       </div>
 
       <div class="card">
-        <h2>2. WINE Market</h2>
+        <h2>WINE Market</h2>
         <div class="metric-grid">
           <div><label>Buy</label><input type="number" id="buyAmount" placeholder="100" /><button class="action-btn btn-green" onclick="buyTokens()">Buy</button></div>
           <div><label>Sell</label><input type="number" id="sellAmount" placeholder="100" /><button class="action-btn btn-red" onclick="sellTokens()">Sell</button></div>
@@ -195,28 +195,37 @@
       </div>
 
       <div class="card full-width">
-        <h2>3. Submit Production Report</h2>
+        <h2>Submit Production Report</h2>
         <div class="metric-grid" style="grid-template-columns: repeat(3, 1fr)">
-          <div><label>Wine (L)</label><input type="number" id="inp_wine" value="10000" /></div>
-          <div><label>Energy (kWh)</label><input type="number" id="inp_energy" value="3500" /></div>
-          <div><label>Water (L)</label><input type="number" id="inp_water" value="40000" /></div>
-          <div><label>Chemicals (kg)</label><input type="number" id="inp_chem" value="12" /></div>
-          <div><label>Logistics (kg-km)</label><input type="number" id="inp_log" value="8000000" /></div>
-          <div><label>Sequestration (kg)</label><input type="number" id="inp_seq" value="2500" /></div>
+          <div><label>Wine (L)</label><input type="number" id="inp_wine" placeholder="10000" /></div>
+          <div><label>Energy (kWh)</label><input type="number" id="inp_energy" placeholder="3500" /></div>
+          <div><label>Water (L)</label><input type="number" id="inp_water" placeholder="40000" /></div>
+          <div><label>Chemical Pesticides (kg)</label><input type="number" id="inp_chem" placeholder="12" /></div>
+          <div><label>Logistics (kg-km)</label><input type="number" id="inp_log" placeholder="8000000" /></div>
+          <div><label>Sequestration (kg)</label><input type="number" id="inp_seq" placeholder="2500" /></div>
         </div>
-        <div><label>IPFS Hash</label><input type="text" id="inp_ipfs" value="QmSimulatedHash" /></div>
+        <div><label>IPFS Hash</label><input type="text" id="inp_ipfs" placeholder="QmXoypizjW3..." /></div>
         <button class="action-btn" onclick="submitReport()">Submit Report</button>
       </div>
 
       <div class="card full-width">
-        <h2>4. Active Reports & Governance</h2>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
-          <button class="action-btn" style="width: auto; padding: 5px 15px" onclick="refreshReports()">Refresh Reports</button>
+        <h2>Active Reports</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px">
+          <div style="display: flex; gap: 10px; align-items: center">
+            <button class="action-btn" style="width: auto; padding: 5px 15px; margin: 0" onclick="refreshReports()">Refresh Reports</button>
+            <select id="statusFilter" onchange="refreshReports()" style="padding: 5px; border-radius: 4px; border: 1px solid #ccc">
+              <option value="all">Show All</option>
+              <option value="0">Pending</option>
+              <option value="1">Verified</option>
+              <option value="2">Rejected</option>
+              <option value="3">Challenged</option>
+              <option value="4">Finalized</option>
+            </select>
+          </div>
           <span style="font-size: 0.8rem">Global Threshold: <span id="globalThreshold">...</span> g/L</span>
         </div>
         <div id="reportsList" style="min-height: 50px">Connect wallet to load reports.</div>
       </div>
-
       <div class="card full-width" style="background: #222; border: none; color: white">
         <h2 style="color: #fff; border-bottom: 1px solid #444">Logs</h2>
         <div id="console-output"></div>
@@ -224,32 +233,9 @@
     </div>
 
     <script>
-      const CONTRACT_ADDRESS = "0xf374b64b8b6b0790399aa5356cc34ee2868bf5b9"; // <--- UPDATE THIS
+      const CONTRACT_ADDRESS = "0x72cb659937c1c8a0d3053ca686edacaa2263d7e0";
 
-      // CORRECTED ABI: Omits the nested 'metrics' struct because Solidity getters skip it.
-      const ABI = [
-        "function joinAsProducer() external payable",
-        "function joinAsJudge() external payable",
-        "function submitReport((uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration) _metrics, string _ipfsHash) external",
-        "function vote(uint256 _id, bool _support) external",
-        "function validateVoteResult(uint256 _id) external",
-        "function challengeReport(uint256 _id) external payable",
-        "function resolveChallenge(uint256 _id, bool upholdOriginalDecision) external",
-        "function finalize(uint256 _id) external",
-        "function buyTokens(uint256 amountToMint) external payable",
-        "function sellTokens(uint256 amount) external",
-        "function settleDebt(uint256 amount) external",
-        "function getMintingCost(uint256 amount) public view returns (uint256)",
-        "function reportCount() public view returns (uint256)",
-        // Mapped based on actual return values (Skipping nested struct)
-        "function reports(uint256) public view returns (address producer, string ipfsHash, uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration, uint256 co2PerLiter, uint256 threshold, uint8 status, uint8 originalStatus, uint256 submissionTime, uint256 votesFor, uint256 votesAgainst, uint256 challengeEndTime, address challenger)",
-        "function balanceOf(address account) public view returns (uint256)",
-        "function carbonDebt(address account) public view returns (uint256)",
-        "function reputation(address account) public view returns (uint256)",
-        "function globalCo2Threshold() public view returns (uint256)",
-        "function hasRole(bytes32 role, address account) public view returns (bool)",
-        "function decimals() public view returns (uint8)",
-      ];
+      const ABI = ["function joinAsProducer() external payable", "function joinAsJudge() external payable", "function submitReport((uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration) _metrics, string _ipfsHash) external", "function vote(uint256 _id, bool _support) external", "function validateVoteResult(uint256 _id) external", "function challengeReport(uint256 _id) external payable", "function resolveChallenge(uint256 _id, bool upholdOriginalDecision) external", "function finalize(uint256 _id) external", "function buyTokens(uint256 amountToMint) external payable", "function sellTokens(uint256 amount) external", "function settleDebt(uint256 amount) external", "function getMintingCost(uint256 amount) public view returns (uint256)", "function reportCount() public view returns (uint256)", "function reports(uint256) public view returns (address producer, string ipfsHash, uint256 wineProduced, uint256 energyUsed, uint256 waterUsed, uint256 chemicalUsage, uint256 logisticsScore, uint256 sequestration, uint256 co2PerLiter, uint256 threshold, uint8 status, uint8 originalStatus, uint256 submissionTime, uint256 votesFor, uint256 votesAgainst, uint256 challengeEndTime, address challenger)", "function balanceOf(address account) public view returns (uint256)", "function carbonDebt(address account) public view returns (uint256)", "function reputation(address account) public view returns (uint256)", "function globalCo2Threshold() public view returns (uint256)", "function hasRole(bytes32 role, address account) public view returns (bool)", "function decimals() public view returns (uint8)"];
 
       const PRODUCER_ROLE = ethers.id("PRODUCER_ROLE");
       const JUDGE_ROLE = ethers.id("JUDGE_ROLE");
@@ -297,7 +283,7 @@
           let roles = [];
           if (isProd) roles.push("Producer");
           if (isJudge) roles.push("Judge");
-          if (isGov) roles.push("Gov");
+          if (isGov) roles.push("Governance");
 
           document.getElementById("userRole").innerText = roles.length ? roles.join(", ") : "None";
           document.getElementById("ethBal").innerText = parseFloat(ethers.formatEther(ethBal)).toFixed(4);
@@ -310,7 +296,6 @@
         }
       }
 
-      // --- ACTIONS ---
       async function joinProducer() {
         try {
           const tx = await contract.joinAsProducer({ value: ethers.parseEther("0.01") });
@@ -393,6 +378,8 @@
       // --- REPORT HANDLING ---
       async function refreshReports() {
         const list = document.getElementById("reportsList");
+        const filterVal = document.getElementById("statusFilter").value; // Get filter value
+
         list.innerHTML = "Loading...";
         try {
           const count = await contract.reportCount();
@@ -401,26 +388,54 @@
 
           for (let i = Number(count); i >= 1; i--) {
             const r = await contract.reports(i);
-            // Correctly mapped values from the NEW ABI:
-            // 0: producer, 1: ipfs, 2: co2, 3: threshold, 4: status, 5: origStatus, 6: time, 7: for, 8: against, 9: end
-            const id = i;
-            const producer = r[0]; // Will be 0x000... (Bug)
-            const co2 = r[8];
-            const threshold = r[9]; // Will be 0 (Bug)
+
             const statusIdx = Number(r[10]);
+
+            // FILTER CHECK: If filter is not 'all' and doesn't match status, skip this iteration
+            if (filterVal !== "all" && filterVal != statusIdx) {
+              continue;
+            }
+
+            // Data Mapping
+            const id = i;
+            const producer = r[0];
+            const ipfsHash = r[1];
+            const wine = r[2];
+            const energy = r[3];
+            const water = r[4];
+            const chem = r[5];
+            const logistics = r[6];
+            const seq = r[7];
+            const co2 = r[8];
+            const threshold = r[9];
+            const finalVerdict = Number(r[11]);
             const votesFor = r[13];
             const votesAgainst = r[14];
             const challengeEnd = Number(r[15]);
             const now = Math.floor(Date.now() / 1000);
 
+            let outcomeBadge = "";
+            if (statusIdx === 4) {
+              if (finalVerdict === 1) {
+                // Status.Verified
+                outcomeBadge = `<div style="background:#27ae60; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">✅ FINAL DECISION: APPROVED</div>`;
+              } else if (finalVerdict === 2) {
+                // Status.Rejected
+                outcomeBadge = `<div style="background:#c0392b; color:white; padding:5px; text-align:center; border-radius:4px; margin-top:5px; font-weight:bold;">❌ FINAL DECISION: REJECTED</div>`;
+              }
+            }
+
             let actions = "";
+            // Button Logic
             if (statusIdx === 0) {
+              // Pending
               actions += `<button onclick="vote(${id}, true)" class="btn-green" style="width:auto; margin:2px;">Vote Yes</button>`;
               actions += `<button onclick="vote(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Vote No</button>`;
               if (Number(votesFor) + Number(votesAgainst) >= 50) {
                 actions += `<button onclick="validate(${id})" class="action-btn" style="width:auto; margin:2px;">Validate</button>`;
               }
             } else if (statusIdx === 1 || statusIdx === 2) {
+              // Verified or Rejected
               if (now < challengeEnd) {
                 actions += `<button onclick="challenge(${id})" class="btn-orange" style="width:auto; margin:2px;">Challenge</button>`;
                 actions += `<span style="font-size:0.8rem; color:red; margin-left:5px;">Window Open</span>`;
@@ -428,7 +443,8 @@
                 actions += `<button onclick="finalize(${id})" class="action-btn" style="width:auto; margin:2px;">Finalize</button>`;
               }
             } else if (statusIdx === 3) {
-              actions += `<button onclick="resolve(${id}, true)" class="action-btn" style="width:auto; margin:2px;">Uphold</button>`;
+              // Challenged
+              actions += `<button onclick="resolve(${id}, true)" class="btn-green" style="width:auto; margin:2px;">Uphold</button>`;
               actions += `<button onclick="resolve(${id}, false)" class="btn-red" style="width:auto; margin:2px;">Overturn</button>`;
             }
 
@@ -438,6 +454,22 @@
                         <span>#${id} - Producer: ${producer.substring(0, 6)}...</span>
                         <span class="report-status status-${statusIdx}">${statusLabels[statusIdx]}</span>
                     </div>
+
+                    <div style="background: #eee; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 0.85rem;">
+                        <div style="font-weight:bold; margin-bottom:5px; border-bottom:1px solid #ccc; padding-bottom:2px;">Production Data</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px;">
+                             <span title="Wine produced">Wine produced: ${wine} L</span>
+                             <span title="Energy used">Energy used: ${energy} kWh</span>
+                             <span title="Water used">Water used: ${water} L</span>
+                             <span title="Chemical pesticides">Chemical pesticides: ${chem} kg</span>
+                             <span title="Logistics score">Logistics score: ${logistics}</span>
+                             <span title="Sequestration">Sequestartion: ${seq} kg</span>
+                        </div>
+                        <div style="margin-top:6px; font-family:monospace; font-size:0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            IPFS: <a href="https://ipfs.io/ipfs/${ipfsHash}" target="_blank" style="color:#722f37; text-decoration:none;">${ipfsHash}</a>
+                        </div>
+                    </div>
+
                     <div class="metric-grid">
                         <span>CO2/L: ${co2} g (Target: ${threshold})</span>
                         <span>Votes: ✅ ${votesFor} / ❌ ${votesAgainst}</span>
@@ -445,7 +477,7 @@
                     <div style="margin-top:5px;">${actions}</div>
                 </div>`;
           }
-          list.innerHTML = html || "No reports.";
+          list.innerHTML = html || "No reports found for this filter.";
         } catch (e) {
           log("Load Error: " + e.message);
           list.innerHTML = "Error loading reports.";
